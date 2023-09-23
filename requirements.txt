@@ -1,0 +1,22 @@
+lxml
+matplotlib
+numpy
+tqdm
+torch==1.7.1
+torchvision==0.8.2
+pycocotools
+Pillow
+pandas
+
+https://pypi.tuna.tsinghua.edu.cn/simple 
+
+conda install pytorch==1.7.1 torchvision==0.8.2 torchaudio==0.7.2 cudatoolkit=10.1 -c pytorch  配合10.1的cuda
+pip install torch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 -i  https://pypi.tuna.tsinghua.edu.cn/simple  11/3
+
+上述的pytorch都不行 换了 conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
+需要配合cuda11.3 和 cudnn 官方给了支持11.x的版本
+
+
+
+
+conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch
