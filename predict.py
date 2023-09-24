@@ -12,6 +12,7 @@ from network_files import FasterRCNN, FastRCNNPredictor, AnchorsGenerator
 from backbone import resnet50_fpn_backbone
 from draw_box_utils import draw_objs
 import pandas as pd
+import numpy as np
 
 
 def create_model(num_classes):
@@ -53,7 +54,7 @@ def main():
     model = create_model(num_classes=5)
 
     # load train weights
-    weights_path = "save_weights/model20230923.pth"
+    weights_path = "save_weights/resNetFpn-model-29.pth"
     assert os.path.exists(weights_path), "{} file dose not exist.".format(weights_path)
     weights_dict = torch.load(weights_path, map_location='cpu')
     weights_dict = weights_dict["model"] if "model" in weights_dict else weights_dict
@@ -87,6 +88,7 @@ def main():
     pre_y1_save = []
     pre_x2_save = []
     pre_y2_save = []
+    pre_sc_save = []
 
     model.eval()  # 进入验证模式
     with torch.no_grad():
@@ -106,19 +108,47 @@ def main():
             predict_scores = predictions["scores"].to("cpu").numpy()
             if len(predict_boxes) == 0:
                 print("没有检测到任何目标!")
-            for boxes, classes in zip(predict_boxes, predict_classes):
-                img_path_save.append(img_path)  # 始终是外层代表的当前图像
-                pre_class_save.append(classes)
-                pre_x1_save.append(boxes[0])
-                pre_y1_save.append(boxes[1])
-                pre_x2_save.append(boxes[2])
-                pre_y2_save.append(boxes[3])
+            need_sort = []
+            for boxes, classes ,scores in zip(predict_boxes, predict_classes, predict_scores):
+                if scores>0.5:
+                    need_sort.append([img_path, classes, boxes[0], boxes[1], boxes[2], boxes[3], scores])
+            need_sort.sort(key=lambda x: (x[2], x[3]))
+            img_path_save.extend([row[0] for row in need_sort])  # 始终是外层代表的当前图像
+            pre_class_save.extend([row[1]-1 for row in need_sort])  # 训练中1-4对应目标，0对应背景，最终结果0对应吊臂
+            pre_x1_save.extend([row[2] for row in need_sort])
+            pre_y1_save.extend([row[3] for row in need_sort])
+            pre_x2_save.extend([row[4] for row in need_sort])
+            pre_y2_save.extend([row[5] for row in need_sort])
+            pre_sc_save.extend([row[6] for row in need_sort])
+
+            # 这里重复构造一下 predict_boxes和predict_class，首先是经过了筛选，另一方面是验证我上面排序过的框是否正确、
+            predict_boxes = [row[2:6] for row in need_sort]
+            predict_classes = [row[1] for row in need_sort]
+            predict_scores = [row[6] for row in need_sort]
+            '''
+            "吊臂": 1,
+            "吊钩": 2,
+            "吊臂下的人": 3,
+            "其他人": 4
+            '''
+            for i in range(len(predict_boxes)):
+                if predict_classes[i] == 3 or predict_classes == 4:  # 是一个人
+                    predict_classes[i] = 4  # 首先默认是其他人
+                    if 1 in predict_classes:  # 图中有吊臂
+                        for j in range(len(predict_boxes)):  # 就开始循环找图中的吊臂，和这个人的位置做匹配
+                            if predict_classes[j] == 1:  # 找到吊臂
+                                left = max(predict_boxes[i][0], predict_boxes[j][0])  # 相交的话左端点就是两个xmin的最大值
+                                right = min(predict_boxes[i][2], predict_boxes[j][2])  # 右端点是xmax的最小值
+                                if left < right:
+                                    predict_classes[i] = 3
+                                    break  # 在寻找吊臂的循环中，找到一个头顶的吊臂了
+
 
 
             plot_img = draw_objs(ori_img,
-                                 predict_boxes,
-                                 predict_classes,
-                                 predict_scores,
+                                 np.array(predict_boxes),
+                                 np.array(predict_classes),
+                                 np.array(predict_scores),
                                  category_index=category_index,
                                  box_thresh=0.5,
                                  line_thickness=3,
@@ -126,9 +156,10 @@ def main():
                                  font_size=20)
             # 保存预测的图片结果
             plot_img.save('./test_result/'+img_path + "_result.jpg")
+
         df = pd.DataFrame(
-            {'image': img_path_save, 'label': pre_class_save, 'xmin': pre_x1_save, 'ymin': pre_y1_save, 'xmax': pre_x2_save, 'ymax': pre_y2_save})
-        df.to_csv('test.csv', index=False)
+            {'image': img_path_save, 'label': pre_class_save, 'xmin': pre_x1_save, 'ymin': pre_y1_save, 'xmax': pre_x2_save, 'ymax': pre_y2_save, 'score':pre_sc_save})
+        df.to_csv('submission.csv', index=False)
 
 if __name__ == '__main__':
     main()
